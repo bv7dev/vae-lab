@@ -1,6 +1,6 @@
 import torch, model
 
-def run_training_epoch(vae: model.VAE, optimizer: torch.optim.Optimizer, train_loader: torch.utils.data.DataLoader, log_interval=16):
+def run_training_epoch(vae: model.VAE, optimizer: torch.optim.Optimizer, train_loader: torch.utils.data.DataLoader, mse_weight=1, kld_weight=1, log_interval=16):
     vae_device = next(vae.parameters()).device
     vae.train() 
 
@@ -10,7 +10,7 @@ def run_training_epoch(vae: model.VAE, optimizer: torch.optim.Optimizer, train_l
         optimizer.zero_grad()
         reconstruction, _, z_mean, z_log_var = vae(original)
 
-        loss = vae.loss(original, reconstruction, z_mean, z_log_var, 1, 0.0012) #*(1 + 3*i/len(train_loader)))
+        loss = vae.loss(original, reconstruction, z_mean, z_log_var, mse_weight, kld_weight)
         loss.backward()
         optimizer.step()
         
@@ -30,7 +30,7 @@ if __name__ == "__main__":
         vae.load(MODEL_NAME, MODEL_DIR)
         print(f"\nLoaded VAE: {MODEL_NAME} at epoch {vae.current_epoch}\n")
     except:
-        vae = model.VAE(INPUT_SHAPE, LATENT_SIZE, CONV_CHANNELS)
+        vae = model.VAE(INPUT_SHAPE, LATENT_SIZE, CONV_CHANNELS, FFN_LAYERS)
         print(f"\nCreated new VAE: {MODEL_NAME}\n")
     
     device = util.get_device()
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     start_epoch = vae.current_epoch + 1
 
     for epoch in range(start_epoch, EPOCHS+start_epoch):
-        run_training_epoch(vae, optimizer, train_loader)
+        run_training_epoch(vae, optimizer, train_loader, MSE_WEIGHT, KLD_WEIGHT)
 
         if epoch < EPOCHS + start_epoch - 1: 
             checkpoint_name = f"{MODEL_NAME}_checkpoint_{epoch}"

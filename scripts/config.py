@@ -1,11 +1,17 @@
-MODEL_NAME = "vae_mnist_2"
+MODEL_NAME = "vae_mnist_4"
 MODEL_DIR = "./models/"
 
 DATASET_NAME = "MNIST"
 DATASET_DIR = "../pytorch-datasets/"
 SUBSET_SIZE = 0 # set to zero for full dataset
 
-BATCH_SIZE = 16
+EPOCHS        = 4
+LEARNING_RATE = 1 / 2048 
+
+MSE_WEIGHT = 1
+KLD_WEIGHT = 1 / 16384
+
+BATCH_SIZE = 64
 IMG_DEPTH  = 1
 IMG_HEIGHT = 64
 IMG_WIDTH  = 64
@@ -13,8 +19,5 @@ IMG_WIDTH  = 64
 INPUT_SHAPE = [BATCH_SIZE, IMG_DEPTH, IMG_HEIGHT, IMG_WIDTH]
 
 CONV_CHANNELS = [2, 4, 8, 16]
-
-
-EPOCHS        = 2
-LATENT_SIZE   = 128
-LEARNING_RATE = 1 / 2048
+FFN_LAYERS = [128]
+LATENT_SIZE = 64

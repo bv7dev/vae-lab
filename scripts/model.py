@@ -5,13 +5,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class VAE(nn.Module):
-    def __init__(self, input_shape: list[int] = None, latent_dim: int = None, conv_channels: list[int] = None):
+    def __init__(self, input_size: list[int] = None, latent_dim: int = None, conv_channels: list[int] = None, ffn_layers: list[int] = None):
         super(VAE, self).__init__()
-        self.input_shape = input_shape
+        self.input_size = input_size
         self.latent_dim = latent_dim
         self.conv_channels = conv_channels
+        self.ffn_layers = ffn_layers
         self.loss_history = { "loss_total": [], "mse_loss": [], "kld_loss": [] }
-        if not None in [input_shape, latent_dim, conv_channels]:
+        if not None in [input_size, latent_dim, conv_channels]:
             self.current_epoch = 0
             self._init_modules()
 
@@ -19,9 +20,10 @@ class VAE(nn.Module):
         path = os.path.join(model_dir, model_name)
         with open(path + ".json", "r") as fp:
             metadata = json.load(fp)
-        self.input_shape   = metadata["input_size"]
+        self.input_size   = metadata["input_size"]
         self.latent_dim    = metadata["latent_dim"]
         self.conv_channels = metadata["conv_channels"]
+        self.ffn_layers    = metadata["ffn_layers"]
         self.current_epoch = metadata["current_epoch"]
         self.loss_history  = metadata["loss_history"]
         self._init_modules()
@@ -31,9 +33,10 @@ class VAE(nn.Module):
         path = os.path.join(model_dir, model_name)
         with open(path + ".json", "w") as fp:
             json.dump({
-                "input_size"   : self.input_shape,
+                "input_size"   : self.input_size,
                 "latent_dim"   : self.latent_dim,
                 "conv_channels": self.conv_channels,
+                "ffn_layers"   : self.ffn_layers,
                 "current_epoch": epoch,
                 "loss_history" : self.loss_history,
                 }, fp)
@@ -47,11 +50,11 @@ class VAE(nn.Module):
         return loss_total
 
     def encode(self, x):
-        x = torch.flatten(self.conv(x), start_dim=1)
-        return self.fc_mean(x), self.fc_log_var(x)
+        x = self.ffn_enc(torch.flatten(self.conv(x), start_dim=1))
+        return self.ffn_mean(x), self.ffn_log_var(x)
 
     def decode(self, z):
-        z = self.fc_deconv(z).view(-1, *self.conv_size[1:])
+        z = self.ffn_dec(z).view(-1, *self.conv_size[1:])
         return self.deconv(z)
 
     def forward(self, image_batch):
@@ -72,9 +75,10 @@ class VAE(nn.Module):
 
     def _init_modules(self):
             conv_channels = self.conv_channels.copy()
+            ffn_layers = self.ffn_layers.copy()
 
             # encoder
-            channels = self.input_shape[1]
+            channels = self.input_size[1]
             self.conv = nn.Sequential()
 
             for cc in conv_channels:
@@ -83,22 +87,45 @@ class VAE(nn.Module):
                         nn.Conv2d(channels, cc, kernel_size=3, stride=2, padding=1),
                         nn.BatchNorm2d(cc),
                         nn.LeakyReLU() ) )
-
                 channels = cc
             
-            self.conv_size = self.conv(torch.rand(self.input_shape)).size()
+            self.conv_size = self.conv(torch.rand(self.input_size)).size()
 
-            # latent
+            # feed-forward network
             flat_size = math.prod(self.conv_size[1:])
-            self.fc_mean = nn.Linear(flat_size, self.latent_dim)
-            self.fc_log_var = nn.Linear(flat_size, self.latent_dim)
 
-            # decoder
+            layer_size = flat_size
+            self.ffn_enc = nn.Sequential()
+            for ls in ffn_layers:
+                self.ffn_enc.append(
+                    nn.Sequential(
+                        nn.Linear(layer_size, ls),
+                        nn.BatchNorm1d(ls),
+                        nn.LeakyReLU() ) )
+                layer_size = ls
+
+            # latent sampling layers
+            self.ffn_mean = nn.Linear(layer_size, self.latent_dim)
+            self.ffn_log_var = nn.Linear(layer_size, self.latent_dim)
+
+            # decoder ffn
+            ffn_layers.reverse()
+            ffn_layers.append(flat_size)
+            layer_size = self.latent_dim
+            self.ffn_dec = nn.Sequential()
+            for ls in ffn_layers:
+                self.ffn_dec.append(
+                    nn.Sequential(
+                        nn.Linear(layer_size, ls),
+                        nn.BatchNorm1d(ls),
+                        nn.LeakyReLU() ) )
+                layer_size = ls
+
+            # decoder conv
             channels = conv_channels.pop()
             conv_channels.reverse()
-            conv_channels.append(self.input_shape[1])
+            conv_channels.append(self.input_size[1])
 
-            self.fc_deconv = nn.Linear(self.latent_dim, flat_size)
             self.deconv = nn.Sequential()
 
             for i, cc in enumerate(conv_channels):
@@ -107,15 +134,20 @@ class VAE(nn.Module):
                         nn.ConvTranspose2d(channels, cc, kernel_size=3, stride=2, padding=1, output_padding=1),
                         nn.BatchNorm2d(cc),
                         nn.LeakyReLU() if i < (len(conv_channels) - 1) else nn.Sigmoid() ) )
-                
                 channels = cc
+            
+            self.deconv_size = self.deconv(torch.rand(self.conv_size)).size()
+
+            assert(self.deconv_size == torch.Size(self.input_size))
+            
+
     
 # Test VAE
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     images = torch.rand(8, 3, 32, 32)
-    vae = VAE(images.size(), 512, [6, 12])
+    vae = VAE(images.size(), 64, [6, 12], [512, 256, 128])
 
     recon, z, z_mean, z_log_var = vae(images)
 
