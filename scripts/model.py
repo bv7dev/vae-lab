@@ -75,7 +75,7 @@ class VAE(nn.Module):
 
     def _init_weights(self, module):
         if isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
-            nn.init.kaiming_normal_(module.weight, nonlinearity='leaky_relu')
+            nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
             if module.bias is not None:
                 nn.init.constant_(module.bias, 0)
         elif isinstance(module, nn.Linear):
@@ -96,7 +96,7 @@ class VAE(nn.Module):
                     nn.Sequential(
                         nn.Conv2d(channels, cc, kernel_size=3, stride=2, padding=1),
                         nn.BatchNorm2d(cc),
-                        nn.LeakyReLU() ) )
+                        nn.GELU() ) )
                 channels = cc
             
             self.conv_size = self.conv(torch.rand(self.input_size)).size()
@@ -111,7 +111,7 @@ class VAE(nn.Module):
                     nn.Sequential(
                         nn.Linear(layer_size, ls),
                         nn.BatchNorm1d(ls),
-                        nn.LeakyReLU() ) )
+                        nn.GELU() ) )
                 layer_size = ls
 
             # latent sampling layers
@@ -128,14 +128,13 @@ class VAE(nn.Module):
                     nn.Sequential(
                         nn.Linear(layer_size, ls),
                         nn.BatchNorm1d(ls),
-                        nn.LeakyReLU() ) )
+                        nn.GELU() ) )
                 layer_size = ls
 
             # decoder conv
             channels = conv_channels.pop()
             conv_channels.reverse()
             conv_channels.append(self.input_size[1])
-
             self.deconv = nn.Sequential()
 
             for i, cc in enumerate(conv_channels):
@@ -143,7 +142,11 @@ class VAE(nn.Module):
                     nn.Sequential(
                         nn.ConvTranspose2d(channels, cc, kernel_size=3, stride=2, padding=1, output_padding=1),
                         nn.BatchNorm2d(cc),
-                        nn.LeakyReLU() if i < (len(conv_channels) - 1) else nn.Sigmoid() ) )
+                        nn.GELU() if i < (len(conv_channels) - 1) else nn.Sequential(
+                            nn.ConvTranspose2d(cc, cc, kernel_size=3, stride=2, padding=1, output_padding=1),
+                            nn.Conv2d(cc, cc, kernel_size=3, stride=2, padding=1),
+                            nn.Sigmoid()
+                        ) ) )
                 channels = cc
             
             self.deconv_size = self.deconv(torch.rand(self.conv_size)).size()

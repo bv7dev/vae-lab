@@ -3,7 +3,7 @@ import torchvision.transforms as T
 import torchvision
 
 def get_train_loader(input_size, dataset_name, dataset_dir, subset_size, download=False):
-    transform = T.Compose([T.Resize((input_size[2], input_size[3]), T.InterpolationMode.LANCZOS), T.ToTensor()])
+    transform = T.Compose([T.Resize((input_size[2], input_size[3]), T.InterpolationMode.BICUBIC), T.ToTensor()])
     if dataset_name == "MNIST":
         train_dataset = torchvision.datasets.MNIST(dataset_dir, train=True, transform=transform, download=download)
     elif dataset_name == "CelebA":
