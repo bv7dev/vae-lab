@@ -4,10 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import tkinter as tk
-from tkinter import ttk
-from PIL import Image, ImageTk
-import numpy as np
 
 class VAE(nn.Module):
     def __init__(self, input_size: list[int] = None, latent_dim: int = None, conv_channels: list[int] = None, ffn_layers: list[int] = None):
@@ -166,51 +162,6 @@ class VAE(nn.Module):
             self.deconv.apply(self._init_weights)
 
 
-class VAE_GUI:
-    def __init__(self, vae, latent_size, device, num_sliders=4):
-        self.vae = vae
-        self.latent_size = latent_size
-        self.device = device
-        self.num_sliders = num_sliders
-        self.latent_vars = [0] * latent_size
-
-        self.root = tk.Tk()
-        self.root.title("VAE Latent Space Explorer")
-
-        self.control_frame = tk.Frame(self.root)
-        self.control_frame.pack(side=tk.LEFT, padx=10, pady=10)
-
-        self.image_frame = tk.Frame(self.root)
-        self.image_frame.pack(side=tk.RIGHT, padx=10, pady=10)
-
-        self.sliders = []
-        for i in range(num_sliders):
-            slider = tk.Scale(self.control_frame, from_=-3, to=3, resolution=0.1, orient=tk.HORIZONTAL, label=f"Latent {i}")
-            slider.set(0)
-            slider.pack()
-            self.sliders.append(slider)
-
-        self.generate_button = tk.Button(self.control_frame, text="Generate Image", command=self.generate_image)
-        self.generate_button.pack()
-
-        self.image_label = tk.Label(self.image_frame)
-        self.image_label.pack()
-
-    def generate_image(self):
-        z = torch.zeros((8, self.latent_size), dtype=torch.float32).to(self.device)
-        for i, slider in enumerate(self.sliders):
-            z[0, i] = slider.get()
-        with torch.no_grad():
-            recon = self.vae.decode(z).cpu().numpy()
-        recon_image = (recon[0].transpose(1, 2, 0) * 255).astype(np.uint8)
-        image = Image.fromarray(recon_image).resize((recon_image.shape[1] * 16, recon_image.shape[0] * 16), Image.NEAREST)
-        image_tk = ImageTk.PhotoImage(image)
-        self.image_label.config(image=image_tk)
-        self.image_label.image = image_tk
-
-    def run(self):
-        self.root.mainloop()
-
 # Test VAE
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
@@ -228,10 +179,3 @@ if __name__ == "__main__":
     axes[1].imshow(recon[0].view(3, 32, 32).permute(1, 2, 0).detach().numpy())
 
     plt.show()
-
-    # Example usage of VAE_GUI
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    vae.to(device)
-    gui = VAE_GUI(vae, 64, device, num_sliders=4)
-    gui.run()
-
