@@ -10,7 +10,7 @@ def run_training_epoch(vae: model.VAE, optimizer: torch.optim.Optimizer, train_l
         optimizer.zero_grad()
         reconstruction, _, z_mean, z_log_var = vae(original)
 
-        loss = vae.loss(original, reconstruction, z_mean, z_log_var, 1, 0.00024) #*(1 + 3*i/len(train_loader)))
+        loss = vae.loss(original, reconstruction, z_mean, z_log_var, 1, 0.0012) #*(1 + 3*i/len(train_loader)))
         loss.backward()
         optimizer.step()
         
