@@ -73,6 +73,16 @@ class VAE(nn.Module):
         self.loss_history["mse_loss"].append(mse_loss)
         self.loss_history["kld_loss"].append(kld_loss)
 
+    def _init_weights(self, module):
+        if isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
+            nn.init.kaiming_normal_(module.weight, nonlinearity='leaky_relu')
+            if module.bias is not None:
+                nn.init.constant_(module.bias, 0)
+        elif isinstance(module, nn.Linear):
+            nn.init.xavier_normal_(module.weight)
+            if module.bias is not None:
+                nn.init.constant_(module.bias, 0)
+
     def _init_modules(self):
             conv_channels = self.conv_channels.copy()
             ffn_layers = self.ffn_layers.copy()
@@ -140,6 +150,12 @@ class VAE(nn.Module):
 
             assert(self.deconv_size == torch.Size(self.input_size))
             
+            self.conv.apply(self._init_weights)
+            self.ffn_enc.apply(self._init_weights)
+            self.ffn_mean.apply(self._init_weights)
+            self.ffn_log_var.apply(self._init_weights)
+            self.ffn_dec.apply(self._init_weights)
+            self.deconv.apply(self._init_weights)
 
     
 # Test VAE

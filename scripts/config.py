@@ -1,4 +1,4 @@
-MODEL_NAME = "vae_mnist_4"
+MODEL_NAME = "vae_mnist_5"
 MODEL_DIR = "./models/"
 
 DATASET_NAME = "MNIST"
