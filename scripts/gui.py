@@ -12,7 +12,7 @@ class VAE_GUI:
         self.latent_size = latent_size
         self.device = device
         self.num_sliders = num_sliders
-        self.latent_vars = torch.randn((8, latent_size))#[0] * latent_size
+        self.latent_vars = torch.randn((1, latent_size))
 
         self.root = tk.Tk()
         self.root.title("VAE Latent Space Explorer")
@@ -25,32 +25,28 @@ class VAE_GUI:
 
         self.sliders = []
         for i in range(num_sliders):
-            slider = tk.Scale(self.control_frame, from_=-1, to=1, resolution=0.01, orient=tk.HORIZONTAL, label=f"Latent {i}", length=300)
-            slider.set(0)
+            slider = tk.Scale(self.control_frame, from_=-3, to=3, resolution=0.01, orient=tk.HORIZONTAL, label=None, length=600, )
+            slider.set(self.latent_vars[0, i].item())
             slider.pack()
             slider.bind("<ButtonRelease-1>", lambda e: self.generate_image())
             self.sliders.append(slider)
-
-        # self.generate_button = tk.Button(self.control_frame, text="Generate Image", command=self.generate_image)
-        # self.generate_button.pack()
 
         self.randomize_button = tk.Button(self.control_frame, text="Randomize Latents", command=self.randomize_sliders)
         self.randomize_button.pack()
 
         self.image_label = tk.Label(self.image_frame)
         self.image_label.pack()
+
+        self.generate_image()
     
     def randomize_sliders(self):
-        # for slider in self.sliders:
-        #     slider.set(torch.randn(1).item() * 2 - 1)
-        # self.generate_image()
-        self.latent_vars = torch.randn((8, self.latent_size))
+        self.latent_vars = torch.randn((1, self.latent_size))
         for i, slider in enumerate(self.sliders):
             slider.set(self.latent_vars[0, i].item())
         self.generate_image()
 
     def generate_image(self, scale=12):
-        z = self.latent_vars.clone().to(self.device) # torch.randn((8, self.latent_size), dtype=torch.float32).to(self.device)
+        z = self.latent_vars.to(self.device)
 
         for i, slider in enumerate(self.sliders):
             z[0, i] = slider.get()
@@ -76,12 +72,10 @@ class VAE_GUI:
 
 if __name__ == '__main__':
     vae = model.VAE()
-    vae.load("vae_mnist_1", "./models/")
+    vae.load("vae_celeba_4", "./models/")
     vae.eval()
 
     device = util.get_device()
     vae.to(device)
 
-    # Example usage of VAE_GUI
-    gui = VAE_GUI(vae, vae.ffn_mean.out_features, device, num_sliders=16)
-    gui.run()
+    VAE_GUI(vae, vae.latent_dim, device, num_sliders=12).run()

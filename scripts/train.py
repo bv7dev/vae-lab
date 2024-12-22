@@ -1,6 +1,7 @@
 import torch, model
 
-def run_training_epoch(vae: model.VAE, optimizer: torch.optim.Optimizer, train_loader: torch.utils.data.DataLoader, mse_weight=1, kld_weight=1, log_interval=16):
+def run_training_epoch(vae: model.VAE, optimizer: torch.optim.Optimizer, train_loader: torch.utils.data.DataLoader,
+                       mse_weight=1, kld_weight=1, log_interval=16):
     vae_device = next(vae.parameters()).device
     vae.train() 
 
