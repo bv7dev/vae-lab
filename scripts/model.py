@@ -32,22 +32,24 @@ class VAE(nn.Module):
 
     def save(self, model_name: str, model_dir: str, epoch: int):
         path = os.path.join(model_dir, model_name)
+        metadata = {
+            "input_size"   : self.input_size,
+            "latent_dim"   : self.latent_dim,
+            "conv_channels": self.conv_channels,
+            "ffn_layers"   : self.ffn_layers,
+            "current_epoch": epoch,
+            "loss_history" : self.loss_history,
+        }
         with open(path + ".json", "w") as fp:
-            json.dump({
-                "input_size"   : self.input_size,
-                "latent_dim"   : self.latent_dim,
-                "conv_channels": self.conv_channels,
-                "ffn_layers"   : self.ffn_layers,
-                "current_epoch": epoch,
-                "loss_history" : self.loss_history,
-                }, fp)
-        torch.save(self.state_dict(), path + ".pt")
+            json.dump(metadata, fp)
+        with torch.no_grad():
+            torch.save(self.state_dict(), path + ".pt")
     
     def loss(self, orig, recon, z_mean, z_log_var, mse_weight=1, kld_weight=1):
         mse_loss = F.mse_loss(recon, orig)
         kld_loss = torch.mean(-0.5 * torch.sum(1 + z_log_var - z_mean ** 2 - torch.exp(z_log_var), dim=1))
-        loss_total = mse_weight*mse_loss + kld_weight*kld_loss
-        self._record_loss(loss_total.item(), mse_loss.item(), kld_loss.item())
+        loss_total = mse_weight * mse_loss + kld_weight * kld_loss
+        self._record_loss(loss_total.detach().item(), mse_loss.detach().item(), kld_loss.detach().item())
         return loss_total
 
     def encode(self, x):
@@ -85,81 +87,81 @@ class VAE(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
     def _init_modules(self):
-            conv_channels = self.conv_channels.copy()
-            ffn_layers = self.ffn_layers.copy()
+        conv_channels = self.conv_channels.copy()
+        ffn_layers = self.ffn_layers.copy()
 
-            # encoder
-            channels = self.input_size[1]
-            self.conv = nn.Sequential()
+        # encoder
+        channels = self.input_size[1]
+        self.conv = nn.Sequential()
 
-            for cc in conv_channels:
-                self.conv.append(
-                    nn.Sequential(
-                        nn.Conv2d(channels, cc, kernel_size=3, stride=2, padding=1),
-                        nn.BatchNorm2d(cc),
-                        nn.GELU() ) )
-                channels = cc
-            
-            self.conv_size = self.conv(torch.rand(self.input_size)).size()
+        for cc in conv_channels:
+            self.conv.append(
+                nn.Sequential(
+                    nn.Conv2d(channels, cc, kernel_size=3, stride=2, padding=1),
+                    nn.BatchNorm2d(cc),
+                    nn.GELU() ) )
+            channels = cc
+        
+        self.conv_size = self.conv(torch.rand(self.input_size)).size()
 
-            # feed-forward network
-            flat_size = math.prod(self.conv_size[1:])
+        # feed-forward network
+        flat_size = math.prod(self.conv_size[1:])
 
-            layer_size = flat_size
-            self.ffn_enc = nn.Sequential()
-            for ls in ffn_layers:
-                self.ffn_enc.append(
-                    nn.Sequential(
-                        nn.Linear(layer_size, ls),
-                        nn.BatchNorm1d(ls),
-                        nn.GELU() ) )
-                layer_size = ls
+        layer_size = flat_size
+        self.ffn_enc = nn.Sequential()
+        for ls in ffn_layers:
+            self.ffn_enc.append(
+                nn.Sequential(
+                    nn.Linear(layer_size, ls),
+                    nn.BatchNorm1d(ls),
+                    nn.GELU() ) )
+            layer_size = ls
 
-            # latent sampling layers
-            self.ffn_mean = nn.Linear(layer_size, self.latent_dim)
-            self.ffn_log_var = nn.Linear(layer_size, self.latent_dim)
+        # latent sampling layers
+        self.ffn_mean = nn.Linear(layer_size, self.latent_dim)
+        self.ffn_log_var = nn.Linear(layer_size, self.latent_dim)
 
-            # decoder ffn
-            ffn_layers.reverse()
-            ffn_layers.append(flat_size)
-            layer_size = self.latent_dim
-            self.ffn_dec = nn.Sequential()
-            for ls in ffn_layers:
-                self.ffn_dec.append(
-                    nn.Sequential(
-                        nn.Linear(layer_size, ls),
-                        nn.BatchNorm1d(ls),
-                        nn.GELU() ) )
-                layer_size = ls
+        # decoder ffn
+        ffn_layers.reverse()
+        ffn_layers.append(flat_size)
+        layer_size = self.latent_dim
+        self.ffn_dec = nn.Sequential()
+        for ls in ffn_layers:
+            self.ffn_dec.append(
+                nn.Sequential(
+                    nn.Linear(layer_size, ls),
+                    nn.BatchNorm1d(ls),
+                    nn.GELU() ) )
+            layer_size = ls
 
-            # decoder conv
-            channels = conv_channels.pop()
-            conv_channels.reverse()
-            conv_channels.append(self.input_size[1])
-            self.deconv = nn.Sequential()
+        # decoder conv
+        channels = conv_channels.pop()
+        conv_channels.reverse()
+        conv_channels.append(self.input_size[1])
+        self.deconv = nn.Sequential()
 
-            for i, cc in enumerate(conv_channels):
-                self.deconv.append(
-                    nn.Sequential(
-                        nn.ConvTranspose2d(channels, cc, kernel_size=3, stride=2, padding=1, output_padding=1),
-                        nn.BatchNorm2d(cc),
-                        nn.GELU() if i < (len(conv_channels) - 1) else nn.Sequential(
-                            nn.ConvTranspose2d(cc, cc, kernel_size=3, stride=2, padding=1, output_padding=1),
-                            nn.Conv2d(cc, cc, kernel_size=3, stride=2, padding=1),
-                            nn.Sigmoid()
-                        ) ) )
-                channels = cc
-            
-            self.deconv_size = self.deconv(torch.rand(self.conv_size)).size()
+        for i, cc in enumerate(conv_channels):
+            self.deconv.append(
+                nn.Sequential(
+                    nn.ConvTranspose2d(channels, cc, kernel_size=3, stride=2, padding=1, output_padding=1),
+                    nn.BatchNorm2d(cc),
+                    nn.GELU() if i < (len(conv_channels) - 1) else nn.Sequential(
+                        nn.ConvTranspose2d(cc, cc, kernel_size=3, stride=2, padding=1, output_padding=1),
+                        nn.Conv2d(cc, cc, kernel_size=3, stride=2, padding=1),
+                        nn.Sigmoid()
+                    ) ) )
+            channels = cc
+        
+        self.deconv_size = self.deconv(torch.rand(self.conv_size)).size()
 
-            assert(self.deconv_size == torch.Size(self.input_size))
-            
-            self.conv.apply(self._init_weights)
-            self.ffn_enc.apply(self._init_weights)
-            self.ffn_mean.apply(self._init_weights)
-            self.ffn_log_var.apply(self._init_weights)
-            self.ffn_dec.apply(self._init_weights)
-            self.deconv.apply(self._init_weights)
+        assert(self.deconv_size == torch.Size(self.input_size))
+        
+        self.conv.apply(self._init_weights)
+        self.ffn_enc.apply(self._init_weights)
+        self.ffn_mean.apply(self._init_weights)
+        self.ffn_log_var.apply(self._init_weights)
+        self.ffn_dec.apply(self._init_weights)
+        self.deconv.apply(self._init_weights)
 
 
 # Test VAE
@@ -179,3 +181,5 @@ if __name__ == "__main__":
     axes[1].imshow(recon[0].view(3, 32, 32).permute(1, 2, 0).detach().numpy())
 
     plt.show()
+
+    # TODO: Save and load model
