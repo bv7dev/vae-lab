@@ -12,13 +12,15 @@ class VAE(nn.Module):
         self.latent_dim = latent_dim
         self.conv_channels = conv_channels
         self.ffn_layers = ffn_layers
-        self.loss_history = { "loss_total": [], "mse_loss": [], "kld_loss": [] }
+        self.loss_history = { "loss_total": [], "mse_loss": [], "kld_loss": [],
+                              "mse_weight": [], "kld_weight": [], "lr": [] }
         if not None in [input_size, latent_dim, conv_channels]:
             self.current_epoch = 0
             self._init_modules()
 
     def load(self, model_name: str, model_dir: str):
-        path = os.path.join(model_dir, model_name)
+        model_path = os.path.join(model_dir, model_name)
+        path = os.path.join(model_path, model_name)
         with open(path + ".json", "r") as fp:
             metadata = json.load(fp)
         self.input_size   = metadata["input_size"]
@@ -29,9 +31,12 @@ class VAE(nn.Module):
         self.loss_history  = metadata["loss_history"]
         self._init_modules()
         self.load_state_dict(torch.load(path + ".pt", weights_only=True))
+        self.save(model_name, model_dir, self.current_epoch, cp=True)
 
-    def save(self, model_name: str, model_dir: str, epoch: int):
-        path = os.path.join(model_dir, model_name)
+    def save(self, model_name: str, model_dir: str, epoch: int, cp=False):
+        model_path = os.path.join(model_dir, model_name)
+        os.makedirs(model_path, exist_ok=True)
+        path = os.path.join(model_path, model_name + ("_checkpoint_" + str(epoch) if cp else ""))
         metadata = {
             "input_size"   : self.input_size,
             "latent_dim"   : self.latent_dim,
@@ -45,11 +50,11 @@ class VAE(nn.Module):
         with torch.no_grad():
             torch.save(self.state_dict(), path + ".pt")
     
-    def loss(self, orig, recon, z_mean, z_log_var, mse_weight=1, kld_weight=1):
+    def loss(self, orig, recon, z_mean, z_log_var, mse_weight, kld_weight, lr):
         mse_loss = F.mse_loss(recon, orig)
         kld_loss = torch.mean(-0.5 * torch.sum(1 + z_log_var - z_mean ** 2 - torch.exp(z_log_var), dim=1))
-        loss_total = mse_weight * mse_loss + kld_weight * kld_loss
-        self._record_loss(loss_total.detach().item(), mse_loss.detach().item(), kld_loss.detach().item())
+        loss_total: torch.Tensor = mse_loss * mse_weight + kld_loss * kld_weight
+        self._record_loss(loss_total.detach().item(), mse_loss.detach().item(), kld_loss.detach().item(), mse_weight, kld_weight, lr)
         return loss_total
 
     def encode(self, x):
@@ -71,10 +76,14 @@ class VAE(nn.Module):
         eps = torch.randn_like(std)
         return std * eps + z_mean
 
-    def _record_loss(self, loss_total, mse_loss, kld_loss):
+    def _record_loss(self, loss_total, mse_loss, kld_loss, mse_weight, kld_weight, lr):
         self.loss_history["loss_total"].append(loss_total)
         self.loss_history["mse_loss"].append(mse_loss)
         self.loss_history["kld_loss"].append(kld_loss)
+        self.loss_history["mse_weight"].append(mse_weight)
+        self.loss_history["kld_weight"].append(kld_weight)
+        self.loss_history["lr"].append(lr)
+
 
     def _init_weights(self, module):
         if isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d):
@@ -167,19 +176,20 @@ class VAE(nn.Module):
 # Test VAE
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from config import *
 
-    images = torch.rand(8, 3, 32, 32)
-    vae = VAE(images.size(), 64, [6, 12], [512, 256, 128])
+    images = torch.rand(INPUT_SIZE)
+    vae = VAE(INPUT_SIZE, LATENT_SIZE, CONV_CHANNELS, FFN_LAYERS)
 
     recon, z, z_mean, z_log_var = vae(images)
 
-    print("loss:", vae.loss(images, recon, z_mean, z_log_var))
+    print("loss:", vae.loss(images, recon, z_mean, z_log_var, 1, 0.1, 1e-4))
 
     fig, axes = plt.subplots(1, 2)
 
-    axes[0].imshow(images[0].view(3, 32, 32).permute(1, 2, 0).detach().numpy())
-    axes[1].imshow(recon[0].view(3, 32, 32).permute(1, 2, 0).detach().numpy())
+    axes[0].imshow(images[0].view(IMG_DEPTH, IMG_HEIGHT, IMG_WIDTH).permute(1, 2, 0).detach().numpy())
+    axes[1].imshow(recon[0].view(IMG_DEPTH, IMG_HEIGHT, IMG_WIDTH).permute(1, 2, 0).detach().numpy())
 
     plt.show()
 
-    # TODO: Save and load model
+    # TODO: Save and load model test
