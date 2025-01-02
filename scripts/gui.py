@@ -72,7 +72,7 @@ class VAE_GUI:
 
 if __name__ == '__main__':
     vae = model.VAE()
-    vae.load("vae_celeba_4", "./models/")
+    vae.load("vae-celeba-64x64", "./models/")
     vae.eval()
 
     device = util.get_device()
