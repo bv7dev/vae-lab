@@ -36,3 +36,5 @@ with torch.no_grad():
 
 - try a round gaussian mask for original and reconstruction to give the center
   of the image, the face, most weight for mse loss (fade into black, transparency?)
+
+![target of some experiment i dont know anymore :D](target.png)
